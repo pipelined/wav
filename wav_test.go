@@ -13,7 +13,7 @@ import (
 const (
 	bufferSize = 512
 	wavSamples = 330534
-	wav1       = "./_testdata/sample.wav"
+	wav1       = "_testdata/sample.wav"
 	wav2       = "_testdata/out1.wav"
 	wav3       = "_testdata/out2.wav"
 	wav8Bit    = "_testdata/sample8bit.wav"
