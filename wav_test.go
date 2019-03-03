@@ -16,6 +16,7 @@ const (
 	wav1       = "_testdata/sample.wav"
 	wav2       = "_testdata/out1.wav"
 	wav3       = "_testdata/out2.wav"
+	wav4       = "_testdata/out3.wav"
 	wav8Bit    = "_testdata/sample8bit.wav"
 	notWav     = "wav.go"
 )
@@ -36,6 +37,10 @@ func TestWavPipe(t *testing.T) {
 		{
 			inFile:  wav2,
 			outFile: wav3,
+		},
+		{
+			inFile:  wav8Bit,
+			outFile: wav4,
 		},
 	}
 
@@ -83,9 +88,6 @@ func TestWavPumpErrors(t *testing.T) {
 		{
 			path: notWav,
 		},
-		{
-			path: wav8Bit,
-		},
 	}
 
 	for _, test := range tests {
@@ -96,10 +98,6 @@ func TestWavPumpErrors(t *testing.T) {
 }
 
 func TestWavSinkErrors(t *testing.T) {
-	// test unsupported bit depth
-	_, err := wav.NewSink("test", signal.BitDepth8)
-	assert.NotNil(t, err)
-
 	// test empty file name
 	sink, err := wav.NewSink("", signal.BitDepth16)
 	assert.Nil(t, err)
