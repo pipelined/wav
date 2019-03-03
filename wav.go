@@ -30,9 +30,6 @@ type (
 	}
 )
 
-// ErrUnsupportedBitDepth is returned when unsupported bit depth is used.
-var ErrUnsupportedBitDepth = errors.New("Only 16 and 32 bit depth is supported")
-
 // NewPump creates a new wav pump and sets wav props.
 func NewPump(path string) *Pump {
 	return &Pump{path: path}
@@ -59,10 +56,6 @@ func (p *Pump) Pump(sourceID string, bufferSize int) (func() ([][]float64, error
 		return nil, 0, 0, errors.New("Wav is not valid")
 	}
 
-	if signal.BitDepth(decoder.BitDepth) != signal.BitDepth16 && signal.BitDepth(decoder.BitDepth) != signal.BitDepth32 {
-		return nil, 0, 0, ErrUnsupportedBitDepth
-	}
-
 	p.file = file
 	p.decoder = decoder
 	numChannels := decoder.Format().NumChannels
@@ -72,7 +65,12 @@ func (p *Pump) Pump(sourceID string, bufferSize int) (func() ([][]float64, error
 	ib := &audio.IntBuffer{
 		Format:         decoder.Format(),
 		Data:           make([]int, bufferSize*decoder.Format().NumChannels),
-		SourceBitDepth: int(decoder.BitDepth),
+		SourceBitDepth: bitDepth,
+	}
+
+	unsigned := false
+	if bitDepth == int(signal.BitDepth8) {
+		unsigned = true
 	}
 
 	return func() ([][]float64, error) {
@@ -84,8 +82,15 @@ func (p *Pump) Pump(sourceID string, bufferSize int) (func() ([][]float64, error
 		if readSamples == 0 {
 			return nil, io.EOF
 		}
+
 		// prune buffer to actual size
-		b := signal.InterInt{Data: ib.Data[:readSamples], NumChannels: numChannels, BitDepth: signal.BitDepth(bitDepth)}.AsFloat64()
+		b := signal.InterInt{
+			Data:        ib.Data[:readSamples],
+			NumChannels: numChannels,
+			BitDepth:    signal.BitDepth(bitDepth),
+			Unsigned:    unsigned,
+		}.AsFloat64()
+
 		if b.Size() != bufferSize {
 			return b, io.ErrUnexpectedEOF
 		}
@@ -95,9 +100,6 @@ func (p *Pump) Pump(sourceID string, bufferSize int) (func() ([][]float64, error
 
 // NewSink creates new wav sink.
 func NewSink(path string, bitDepth signal.BitDepth) (*Sink, error) {
-	if bitDepth != signal.BitDepth16 && bitDepth != signal.BitDepth32 {
-		return nil, ErrUnsupportedBitDepth
-	}
 	return &Sink{
 		path:     path,
 		bitDepth: bitDepth,
@@ -132,8 +134,13 @@ func (s *Sink) Sink(pipeID string, sampleRate, numChannels, bufferSize int) (fun
 		SourceBitDepth: int(s.bitDepth),
 	}
 
+	unsigned := false
+	if s.bitDepth == signal.BitDepth8 {
+		unsigned = true
+	}
+
 	return func(b [][]float64) error {
-		ib.Data = signal.Float64(b).AsInterInt(s.bitDepth)
+		ib.Data = signal.Float64(b).AsInterInt(s.bitDepth, unsigned)
 		return s.encoder.Write(ib)
 	}, nil
 }
