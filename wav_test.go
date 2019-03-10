@@ -2,6 +2,7 @@ package wav_test
 
 import (
 	"math"
+	"os"
 	"testing"
 
 	"github.com/pipelined/signal"
@@ -27,27 +28,31 @@ var (
 
 func TestWavPipe(t *testing.T) {
 	tests := []struct {
-		inFile  string
-		outFile string
+		inPath  string
+		outPath string
 	}{
 		{
-			inFile:  wav1,
-			outFile: wav2,
+			inPath:  wav1,
+			outPath: wav2,
 		},
 		{
-			inFile:  wav2,
-			outFile: wav3,
+			inPath:  wav2,
+			outPath: wav3,
 		},
 		{
-			inFile:  wav8Bit,
-			outFile: wav4,
+			inPath:  wav8Bit,
+			outPath: wav4,
 		},
 	}
 
 	for _, test := range tests {
-		pump := wav.NewPump(test.inFile)
-		sink, err := wav.NewSink(test.outFile, signal.BitDepth16)
+		inFile, err := os.Open(test.inPath)
 		assert.Nil(t, err)
+		pump := wav.NewPump(inFile)
+
+		outFile, err := os.Create(test.outPath)
+		assert.Nil(t, err)
+		sink := wav.NewSink(outFile, signal.BitDepth16)
 
 		pumpFn, sampleRate, numChannles, err := pump.Pump("", bufferSize)
 		assert.NotNil(t, pumpFn)
@@ -71,36 +76,19 @@ func TestWavPipe(t *testing.T) {
 		assert.Equal(t, wavMessages, messages)
 		assert.Equal(t, wavSamples, samples)
 
-		err = pump.Flush("")
-		assert.Nil(t, err)
 		err = sink.Flush("")
+		assert.Nil(t, err)
+
+		err = inFile.Close()
+		assert.Nil(t, err)
+		err = outFile.Close()
 		assert.Nil(t, err)
 	}
 }
 
 func TestWavPumpErrors(t *testing.T) {
-	tests := []struct {
-		path string
-	}{
-		{
-			path: "non-existing file",
-		},
-		{
-			path: notWav,
-		},
-	}
-
-	for _, test := range tests {
-		pump := wav.NewPump(test.path)
-		_, _, _, err := pump.Pump("", 0)
-		assert.NotNil(t, err)
-	}
-}
-
-func TestWavSinkErrors(t *testing.T) {
-	// test empty file name
-	sink, err := wav.NewSink("", signal.BitDepth16)
-	assert.Nil(t, err)
-	_, err = sink.Sink("test", 0, 0, 0)
+	f, _ := os.Open(notWav)
+	pump := wav.NewPump(f)
+	_, _, _, err := pump.Pump("", 0)
 	assert.NotNil(t, err)
 }
