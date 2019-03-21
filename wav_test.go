@@ -14,10 +14,10 @@ import (
 const (
 	bufferSize = 512
 	wavSamples = 330534
-	wav1       = "_testdata/sample.wav"
-	wav2       = "_testdata/out1.wav"
-	wav3       = "_testdata/out2.wav"
-	wav4       = "_testdata/out3.wav"
+	wavSample  = "_testdata/sample.wav"
+	wav1       = "_testdata/out1.wav"
+	wav2       = "_testdata/out2.wav"
+	wav3       = "_testdata/out3.wav"
 	wav8Bit    = "_testdata/sample8bit.wav"
 	notWav     = "wav.go"
 )
@@ -32,27 +32,30 @@ func TestWavPipe(t *testing.T) {
 		outPath string
 	}{
 		{
+			inPath:  wavSample,
+			outPath: wav1,
+		},
+		{
 			inPath:  wav1,
 			outPath: wav2,
 		},
 		{
-			inPath:  wav2,
-			outPath: wav3,
-		},
-		{
 			inPath:  wav8Bit,
-			outPath: wav4,
+			outPath: wav3,
 		},
 	}
 
 	for _, test := range tests {
 		inFile, err := os.Open(test.inPath)
 		assert.Nil(t, err)
-		pump := wav.NewPump(inFile)
+		pump := wav.Pump{ReadSeeker: inFile}
 
 		outFile, err := os.Create(test.outPath)
 		assert.Nil(t, err)
-		sink := wav.NewSink(outFile, signal.BitDepth16)
+		sink := wav.Sink{
+			WriteSeeker: outFile,
+			BitDepth:    signal.BitDepth16,
+		}
 
 		pumpFn, sampleRate, numChannles, err := pump.Pump("", bufferSize)
 		assert.NotNil(t, pumpFn)
@@ -88,7 +91,7 @@ func TestWavPipe(t *testing.T) {
 
 func TestWavPumpErrors(t *testing.T) {
 	f, _ := os.Open(notWav)
-	pump := wav.NewPump(f)
+	pump := wav.Pump{ReadSeeker: f}
 	_, _, _, err := pump.Pump("", 0)
 	assert.NotNil(t, err)
 }
