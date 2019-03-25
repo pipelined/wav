@@ -19,28 +19,25 @@ var (
 
 type (
 	// Pump reads from wav file.
-	// This component cannot be reused for consequent runs.
+	// ReadSeeker is the source of wav data.
 	Pump struct {
-		r io.ReadSeeker
+		io.ReadSeeker
 		d *wav.Decoder
 	}
 
 	// Sink sink saves audio to wav file.
+	// WriteSeeker is the destination of wav data.
+	// BitDepth is output bit depth.
 	Sink struct {
-		w        io.WriteSeeker
-		e        *wav.Encoder
-		bitDepth signal.BitDepth
+		io.WriteSeeker
+		signal.BitDepth
+		e *wav.Encoder
 	}
 )
 
-// NewPump creates a new wav pump and sets wav props.
-func NewPump(r io.ReadSeeker) *Pump {
-	return &Pump{r: r}
-}
-
 // Pump starts the pump process once executed, wav attributes are accessible.
 func (p *Pump) Pump(sourceID string, bufferSize int) (func() ([][]float64, error), int, int, error) {
-	decoder := wav.NewDecoder(p.r)
+	decoder := wav.NewDecoder(p)
 	if !decoder.IsValidFile() {
 		return nil, 0, 0, ErrInvalidWav
 	}
@@ -86,14 +83,6 @@ func (p *Pump) Pump(sourceID string, bufferSize int) (func() ([][]float64, error
 	}, sampleRate, numChannels, nil
 }
 
-// NewSink creates new wav sink.
-func NewSink(w io.WriteSeeker, bitDepth signal.BitDepth) *Sink {
-	return &Sink{
-		w:        w,
-		bitDepth: bitDepth,
-	}
-}
-
 // Flush flushes encoder.
 func (s *Sink) Flush(string) error {
 	return s.e.Close()
@@ -101,22 +90,22 @@ func (s *Sink) Flush(string) error {
 
 // Sink returns new Sink function instance.
 func (s *Sink) Sink(pipeID string, sampleRate, numChannels, bufferSize int) (func([][]float64) error, error) {
-	s.e = wav.NewEncoder(s.w, sampleRate, int(s.bitDepth), numChannels, wavOutFormat)
+	s.e = wav.NewEncoder(s, sampleRate, int(s.BitDepth), numChannels, wavOutFormat)
 	ib := &audio.IntBuffer{
 		Format: &audio.Format{
 			NumChannels: numChannels,
 			SampleRate:  sampleRate,
 		},
-		SourceBitDepth: int(s.bitDepth),
+		SourceBitDepth: int(s.BitDepth),
 	}
 
 	unsigned := false
-	if s.bitDepth == signal.BitDepth8 {
+	if s.BitDepth == signal.BitDepth8 {
 		unsigned = true
 	}
 
 	return func(b [][]float64) error {
-		ib.Data = signal.Float64(b).AsInterInt(s.bitDepth, unsigned)
+		ib.Data = signal.Float64(b).AsInterInt(s.BitDepth, unsigned)
 		return s.e.Write(ib)
 	}, nil
 }
