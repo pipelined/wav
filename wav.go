@@ -7,7 +7,6 @@ import (
 
 	"github.com/go-audio/audio"
 	"github.com/go-audio/wav"
-	"github.com/pipelined/pipe"
 	"github.com/pipelined/signal"
 )
 
@@ -22,11 +21,9 @@ var (
 	// ErrInvalidWav is returned when wav file is not valid.
 	ErrInvalidWav = errors.New("Wav is not valid")
 
-	// Supported is the struct with supported parameters of wav output.
-	Supported = struct {
-		BitDepths map[signal.BitDepth]struct{}
-	}{
-		BitDepths: map[signal.BitDepth]struct{}{
+	// Supported is the struct that provides validation logic for wav package values.
+	Supported = supported{
+		bitDepths: map[signal.BitDepth]struct{}{
 			signal.BitDepth8:  {},
 			signal.BitDepth16: {},
 			signal.BitDepth24: {},
@@ -54,10 +51,8 @@ type (
 		e *wav.Encoder
 	}
 
-	// SinkBuilder creates Sink with provided parameters.
-	SinkBuilder struct {
-		io.WriteSeeker
-		signal.BitDepth
+	supported struct {
+		bitDepths map[signal.BitDepth]struct{}
 	}
 )
 
@@ -136,20 +131,15 @@ func (s *Sink) Sink(pipeID string, sampleRate, numChannels, bufferSize int) (fun
 	}, nil
 }
 
-// Build creates wav sink if configuration is valid, otherwise error is returned.
-func (sb *SinkBuilder) Build() (pipe.Sink, error) {
-	// check if bit depth is supported
-	if _, ok := Supported.BitDepths[sb.BitDepth]; !ok {
-		return nil, fmt.Errorf("Bit depth %v is not supported", sb.BitDepth)
-	}
-
-	return &Sink{
-		WriteSeeker: sb.WriteSeeker,
-		BitDepth:    sb.BitDepth,
-	}, nil
-}
-
 // Extensions of wav audio files.
 func Extensions() []string {
 	return extensions
+}
+
+// BitDepth checks if provided bit depth is supported.
+func (s supported) BitDepth(v signal.BitDepth) error {
+	if _, ok := s.bitDepths[v]; !ok {
+		return fmt.Errorf("Bit depth %v is not supported", v)
+	}
+	return nil
 }

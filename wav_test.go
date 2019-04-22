@@ -99,30 +99,21 @@ func TestWavPumpErrors(t *testing.T) {
 	assert.NotNil(t, err)
 }
 
-func TestSinkBuilder(t *testing.T) {
-	tests := []struct {
-		signal.BitDepth
-	}{
-		{BitDepth: signal.BitDepth8},
-		{BitDepth: signal.BitDepth24},
+func TestSupportedBitDepth(t *testing.T) {
+	tests := map[signal.BitDepth]bool{
+		signal.BitDepth8:    true,
+		signal.BitDepth24:   true,
+		signal.BitDepth(64): false,
 	}
 
-	for _, test := range tests {
-		sb := &wav.SinkBuilder{
-			BitDepth: test.BitDepth,
+	for v, supported := range tests {
+		err := wav.Supported.BitDepth(v)
+		if supported {
+			assert.Nil(t, err)
+		} else {
+			assert.NotNil(t, err)
 		}
-
-		s, err := sb.Build()
-		assert.NotNil(t, s)
-		assert.Nil(t, err)
 	}
-
-	sb := &wav.SinkBuilder{
-		BitDepth: signal.BitDepth(12),
-	}
-	s, err := sb.Build()
-	assert.Nil(t, s)
-	assert.NotNil(t, err)
 }
 
 func TestExtensions(t *testing.T) {
