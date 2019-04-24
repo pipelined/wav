@@ -143,3 +143,12 @@ func (s supported) BitDepth(v signal.BitDepth) error {
 	}
 	return nil
 }
+
+// BitDepths returns a map of supported bit depths.
+func (s supported) BitDepths() map[signal.BitDepth]struct{} {
+	result := make(map[signal.BitDepth]struct{})
+	for k, v := range s.bitDepths {
+		result[k] = v
+	}
+	return result
+}
