@@ -98,25 +98,3 @@ func TestWavPumpErrors(t *testing.T) {
 	_, _, _, err := pump.Pump("", 0)
 	assert.NotNil(t, err)
 }
-
-func TestSupportedBitDepth(t *testing.T) {
-	tests := map[signal.BitDepth]bool{
-		signal.BitDepth8:    true,
-		signal.BitDepth24:   true,
-		signal.BitDepth(64): false,
-	}
-
-	for v, supported := range tests {
-		err := wav.Supported.BitDepth(v)
-		if supported {
-			assert.Nil(t, err)
-		} else {
-			assert.NotNil(t, err)
-		}
-	}
-}
-
-func TestExtensions(t *testing.T) {
-	exts := wav.Extensions()
-	assert.Equal(t, 2, len(exts))
-}

@@ -2,7 +2,6 @@ package wav
 
 import (
 	"errors"
-	"fmt"
 	"io"
 
 	"github.com/go-audio/audio"
@@ -13,26 +12,10 @@ import (
 const (
 	// value for wav output format chunk.
 	wavOutFormat = 1
-	// DefaultExtension of wav files.
-	DefaultExtension = ".wav"
 )
 
-var (
-	// ErrInvalidWav is returned when wav file is not valid.
-	ErrInvalidWav = errors.New("Wav is not valid")
-
-	// Supported is the struct that provides validation logic for wav package values.
-	Supported = supported{
-		bitDepths: map[signal.BitDepth]struct{}{
-			signal.BitDepth8:  {},
-			signal.BitDepth16: {},
-			signal.BitDepth24: {},
-			signal.BitDepth32: {},
-		},
-	}
-	// extensions of wav files.
-	extensions = []string{DefaultExtension, ".wave"}
-)
+// ErrInvalidWav is returned when wav file is not valid.
+var ErrInvalidWav = errors.New("Wav is not valid")
 
 type (
 	// Pump reads from wav file.
@@ -129,26 +112,4 @@ func (s *Sink) Sink(pipeID string, sampleRate, numChannels, bufferSize int) (fun
 		ib.Data = signal.Float64(b).AsInterInt(s.BitDepth, unsigned)
 		return s.e.Write(ib)
 	}, nil
-}
-
-// Extensions of wav audio files.
-func Extensions() []string {
-	return extensions
-}
-
-// BitDepth checks if provided bit depth is supported.
-func (s supported) BitDepth(v signal.BitDepth) error {
-	if _, ok := s.bitDepths[v]; !ok {
-		return fmt.Errorf("Bit depth %v is not supported", v)
-	}
-	return nil
-}
-
-// BitDepths returns a map of supported bit depths.
-func (s supported) BitDepths() map[signal.BitDepth]struct{} {
-	result := make(map[signal.BitDepth]struct{})
-	for k, v := range s.bitDepths {
-		result[k] = v
-	}
-	return result
 }
