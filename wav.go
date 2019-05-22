@@ -27,7 +27,7 @@ type (
 
 	// Sink sink saves audio to wav file.
 	// WriteSeeker is the destination of wav data.
-	// BitDepth is output bit depth.
+	// BitDepth is output bit depth. Supported values: 8, 16, 24 and 32.
 	Sink struct {
 		io.WriteSeeker
 		signal.BitDepth
