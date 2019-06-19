@@ -18,15 +18,13 @@ const (
 var ErrInvalidWav = errors.New("Wav is not valid")
 
 type (
-	// Pump reads from wav file.
-	// ReadSeeker is the source of wav data.
+	// Pump reads wav data from ReadSeeker.
 	Pump struct {
 		io.ReadSeeker
 		d *wav.Decoder
 	}
 
-	// Sink sink saves audio to wav file.
-	// WriteSeeker is the destination of wav data.
+	// Sink writes wav data to WriteSeeker.
 	// BitDepth is output bit depth. Supported values: 8, 16, 24 and 32.
 	Sink struct {
 		io.WriteSeeker
@@ -63,18 +61,18 @@ func (p *Pump) Pump(sourceID string, bufferSize int) (func() ([][]float64, error
 	}
 
 	return func() ([][]float64, error) {
-		readSamples, err := p.d.PCMBuffer(ib)
+		read, err := p.d.PCMBuffer(ib)
 		if err != nil {
 			return nil, err
 		}
 
-		if readSamples == 0 {
+		if read == 0 {
 			return nil, io.EOF
 		}
 
-		// prune buffer to actual size
+		// trim and convert the buffer
 		b := signal.InterInt{
-			Data:        ib.Data[:readSamples],
+			Data:        ib.Data[:read],
 			NumChannels: numChannels,
 			BitDepth:    bitDepth,
 			Unsigned:    unsigned,
