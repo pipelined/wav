@@ -38,7 +38,7 @@ type (
 )
 
 // Pump starts the pump process once executed, wav attributes are accessible.
-func (p *Pump) Pump(sourceID string, bufferSize int) (func() ([][]float64, error), int, int, error) {
+func (p *Pump) Pump(sourceID string) (func(bufferSize int) ([][]float64, error), int, int, error) {
 	decoder := wav.NewDecoder(p)
 	if !decoder.IsValidFile() {
 		return nil, 0, 0, ErrInvalidWav
@@ -49,18 +49,20 @@ func (p *Pump) Pump(sourceID string, bufferSize int) (func() ([][]float64, error
 	sampleRate := int(decoder.SampleRate)
 	bitDepth := signal.BitDepth(decoder.BitDepth)
 
-	ib := &audio.IntBuffer{
-		Format:         decoder.Format(),
-		Data:           make([]int, bufferSize*numChannels),
-		SourceBitDepth: int(bitDepth),
-	}
-
 	unsigned := false
 	if bitDepth == signal.BitDepth8 {
 		unsigned = true
 	}
 
-	return func() ([][]float64, error) {
+	ib := &audio.IntBuffer{
+		Format:         decoder.Format(),
+		SourceBitDepth: int(bitDepth),
+	}
+	return func(bufferSize int) ([][]float64, error) {
+		if len(ib.Data) != bufferSize {
+			ib.Data = make([]int, bufferSize*numChannels)
+		}
+
 		read, err := p.d.PCMBuffer(ib)
 		if err != nil {
 			return nil, err
@@ -91,7 +93,7 @@ func (s *Sink) Flush(string) error {
 }
 
 // Sink returns new Sink function instance.
-func (s *Sink) Sink(pipeID string, sampleRate, numChannels, bufferSize int) (func([][]float64) error, error) {
+func (s *Sink) Sink(pipeID string, sampleRate, numChannels int) (func([][]float64) error, error) {
 	s.e = wav.NewEncoder(s, sampleRate, int(s.BitDepth), numChannels, wavOutFormat)
 	ib := &audio.IntBuffer{
 		Format: &audio.Format{
