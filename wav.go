@@ -2,6 +2,7 @@ package wav
 
 import (
 	"errors"
+	"fmt"
 	"io"
 
 	"github.com/go-audio/audio"
@@ -38,7 +39,7 @@ type (
 )
 
 // Pump starts the pump process once executed, wav attributes are accessible.
-func (p *Pump) Pump(sourceID string) (func(bufferSize int) ([][]float64, error), int, int, error) {
+func (p *Pump) Pump(sourceID string) (func(signal.Float64) error, signal.SampleRate, int, error) {
 	decoder := wav.NewDecoder(p)
 	if !decoder.IsValidFile() {
 		return nil, 0, 0, ErrInvalidWav
@@ -46,45 +47,52 @@ func (p *Pump) Pump(sourceID string) (func(bufferSize int) ([][]float64, error),
 
 	p.d = decoder
 	numChannels := decoder.Format().NumChannels
-	sampleRate := int(decoder.SampleRate)
 	bitDepth := signal.BitDepth(decoder.BitDepth)
+
+	// PCM buffer for wav decoder.
+	PCMBuf := &audio.IntBuffer{
+		Format:         decoder.Format(),
+		SourceBitDepth: int(bitDepth),
+	}
 
 	unsigned := false
 	if bitDepth == signal.BitDepth8 {
 		unsigned = true
 	}
-
-	ib := &audio.IntBuffer{
-		Format:         decoder.Format(),
-		SourceBitDepth: int(bitDepth),
+	// buffer for output conversion.
+	ints := signal.InterInt{
+		Data:        PCMBuf.Data,
+		NumChannels: numChannels,
+		BitDepth:    bitDepth,
+		Unsigned:    unsigned,
 	}
-	return func(bufferSize int) ([][]float64, error) {
-		if len(ib.Data) != bufferSize {
-			ib.Data = make([]int, bufferSize*numChannels)
+	return func(b signal.Float64) error {
+		// reset PCM buffer size.
+		if PCMBuf.NumFrames() != b.Size() {
+			PCMBuf.Data = make([]int, b.Size()*numChannels)
 		}
 
-		read, err := p.d.PCMBuffer(ib)
+		// read new buffer, io.EOF is never returned here.
+		read, err := p.d.PCMBuffer(PCMBuf)
 		if err != nil {
-			return nil, err
+			return fmt.Errorf("error reading PCM buffer: %w", err)
 		}
-
 		if read == 0 {
-			return nil, io.EOF
+			return io.EOF
+		}
+		ints.Data = PCMBuf.Data[:read]
+
+		// trim buffer.
+		if size := ints.Size(); size != b.Size() {
+			for i := range b {
+				b[i] = b[i][:size]
+			}
 		}
 
-		// trim and convert the buffer
-		b := signal.InterInt{
-			Data:        ib.Data[:read],
-			NumChannels: numChannels,
-			BitDepth:    bitDepth,
-			Unsigned:    unsigned,
-		}.AsFloat64()
-
-		if b.Size() != bufferSize {
-			return b, io.ErrUnexpectedEOF
-		}
-		return b, nil
-	}, sampleRate, numChannels, nil
+		// copy to the output.
+		ints.CopyToFloat64(b)
+		return nil
+	}, signal.SampleRate(decoder.SampleRate), numChannels, nil
 }
 
 // Flush flushes encoder.
@@ -93,23 +101,33 @@ func (s *Sink) Flush(string) error {
 }
 
 // Sink returns new Sink function instance.
-func (s *Sink) Sink(pipeID string, sampleRate, numChannels int) (func([][]float64) error, error) {
-	s.e = wav.NewEncoder(s, sampleRate, int(s.BitDepth), numChannels, wavOutFormat)
-	ib := &audio.IntBuffer{
-		Format: &audio.Format{
-			NumChannels: numChannels,
-			SampleRate:  sampleRate,
-		},
-		SourceBitDepth: int(s.BitDepth),
-	}
-
+func (s *Sink) Sink(pipeID string, sampleRate signal.SampleRate, numChannels int) (func(signal.Float64) error, error) {
+	s.e = wav.NewEncoder(s, int(sampleRate), int(s.BitDepth), numChannels, wavOutFormat)
 	unsigned := false
 	if s.BitDepth == signal.BitDepth8 {
 		unsigned = true
 	}
+	// buffer for input conversion.
+	ints := signal.InterInt{
+		BitDepth:    s.BitDepth,
+		NumChannels: numChannels,
+		Unsigned:    unsigned,
+	}
+	// PCM buffer for write, refers data of ints buffer.
+	PCMBuf := audio.IntBuffer{
+		Format: &audio.Format{
+			NumChannels: numChannels,
+			SampleRate:  int(sampleRate),
+		},
+		SourceBitDepth: int(s.BitDepth),
+	}
 
-	return func(b [][]float64) error {
-		ib.Data = signal.Float64(b).AsInterInt(s.BitDepth, unsigned)
-		return s.e.Write(ib)
+	return func(b signal.Float64) error {
+		if b.Size() != ints.Size() {
+			ints.Data = make([]int, b.Size()*b.NumChannels())
+		}
+		b.CopyToInterInt(ints)
+		PCMBuf.Data = ints.Data
+		return s.e.Write(&PCMBuf)
 	}, nil
 }
