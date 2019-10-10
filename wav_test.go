@@ -68,10 +68,12 @@ func TestWavPipe(t *testing.T) {
 		assert.NotNil(t, sinkFn)
 		assert.Nil(t, err)
 
-		var buf [][]float64
+		buf := signal.Float64Buffer(numChannles, bufferSize)
 		messages, samples := 0, 0
-		for err == nil {
-			buf, err = pumpFn(bufferSize)
+		for {
+			if err = pumpFn(buf); err != nil {
+				break
+			}
 			_ = sinkFn(buf)
 			messages++
 			if buf != nil {
