@@ -61,15 +61,17 @@ func (p *Pump) Pump(sourceID string) (func(signal.Float64) error, signal.SampleR
 	}
 	// buffer for output conversion.
 	ints := signal.InterInt{
-		Data:        PCMBuf.Data,
 		NumChannels: numChannels,
 		BitDepth:    bitDepth,
 		Unsigned:    unsigned,
 	}
+	var size int
 	return func(b signal.Float64) error {
 		// reset PCM buffer size.
-		if PCMBuf.NumFrames() != b.Size() {
-			PCMBuf.Data = make([]int, b.Size()*numChannels)
+		if b.Size() != size {
+			size = b.Size()
+			ints.Data = make([]int, size*numChannels)
+			PCMBuf.Data = ints.Data
 		}
 
 		// read new buffer, io.EOF is never returned here.
@@ -80,12 +82,12 @@ func (p *Pump) Pump(sourceID string) (func(signal.Float64) error, signal.SampleR
 		if read == 0 {
 			return io.EOF
 		}
-		ints.Data = PCMBuf.Data[:read]
 
 		// trim buffer.
-		if size := ints.Size(); size != b.Size() {
+		if read != len(ints.Data) {
+			ints.Data = ints.Data[:read]
 			for i := range b {
-				b[i] = b[i][:size]
+				b[i] = b[i][:ints.Size()]
 			}
 		}
 
