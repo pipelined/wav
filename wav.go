@@ -97,7 +97,10 @@ func (p *Pump) Pump(sourceID string) (func(signal.Float64) error, signal.SampleR
 
 // Flush flushes encoder.
 func (s *Sink) Flush(string) error {
-	return s.e.Close()
+	if err := s.e.Close(); err != nil {
+		return fmt.Errorf("failed to flush wav encoder: %w", err)
+	}
+	return nil
 }
 
 // Sink returns new Sink function instance.
@@ -128,6 +131,9 @@ func (s *Sink) Sink(pipeID string, sampleRate signal.SampleRate, numChannels int
 		}
 		b.CopyToInterInt(ints)
 		PCMBuf.Data = ints.Data
-		return s.e.Write(&PCMBuf)
+		if err := s.e.Write(&PCMBuf); err != nil {
+			return fmt.Errorf("failed to write PCM buffer: %w", err)
+		}
+		return nil
 	}, nil
 }
