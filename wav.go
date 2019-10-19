@@ -16,13 +16,13 @@ const (
 )
 
 // ErrInvalidWav is returned when wav file is not valid.
-var ErrInvalidWav = errors.New("Wav is not valid")
+var ErrInvalidWav = errors.New("invalid WAV")
 
 type (
 	// Pump reads wav data from ReadSeeker.
 	Pump struct {
 		io.ReadSeeker
-		d *wav.Decoder
+		decoder *wav.Decoder
 	}
 
 	// Sink writes wav data to WriteSeeker.
@@ -30,7 +30,7 @@ type (
 	Sink struct {
 		io.WriteSeeker
 		signal.BitDepth
-		e *wav.Encoder
+		encoder *wav.Encoder
 	}
 
 	supported struct {
@@ -40,42 +40,37 @@ type (
 
 // Pump starts the pump process once executed, wav attributes are accessible.
 func (p *Pump) Pump(sourceID string) (func(signal.Float64) error, signal.SampleRate, int, error) {
-	decoder := wav.NewDecoder(p)
-	if !decoder.IsValidFile() {
+	p.decoder = wav.NewDecoder(p)
+	if !p.decoder.IsValidFile() {
 		return nil, 0, 0, ErrInvalidWav
 	}
 
-	p.d = decoder
-	numChannels := decoder.Format().NumChannels
-	bitDepth := signal.BitDepth(decoder.BitDepth)
+	numChannels := p.decoder.Format().NumChannels
+	bitDepth := signal.BitDepth(p.decoder.BitDepth)
 
 	// PCM buffer for wav decoder.
 	PCMBuf := &audio.IntBuffer{
-		Format:         decoder.Format(),
+		Format:         p.decoder.Format(),
 		SourceBitDepth: int(bitDepth),
 	}
 
-	unsigned := false
-	if bitDepth == signal.BitDepth8 {
-		unsigned = true
-	}
 	// buffer for output conversion.
 	ints := signal.InterInt{
 		NumChannels: numChannels,
 		BitDepth:    bitDepth,
-		Unsigned:    unsigned,
 	}
-	var size int
+	if bitDepth == signal.BitDepth8 {
+		ints.Unsigned = true
+	}
 	return func(b signal.Float64) error {
 		// reset PCM buffer size.
-		if b.Size() != size {
-			size = b.Size()
-			ints.Data = make([]int, size*numChannels)
+		if ints.Size() != b.Size() {
+			ints.Data = make([]int, b.Size()*numChannels)
 			PCMBuf.Data = ints.Data
 		}
 
 		// read new buffer, io.EOF is never returned here.
-		read, err := p.d.PCMBuffer(PCMBuf)
+		read, err := p.decoder.PCMBuffer(PCMBuf)
 		if err != nil {
 			return fmt.Errorf("error reading PCM buffer: %w", err)
 		}
@@ -94,29 +89,33 @@ func (p *Pump) Pump(sourceID string) (func(signal.Float64) error, signal.SampleR
 		// copy to the output.
 		ints.CopyToFloat64(b)
 		return nil
-	}, signal.SampleRate(decoder.SampleRate), numChannels, nil
+	}, signal.SampleRate(p.decoder.SampleRate), numChannels, nil
 }
 
 // Flush flushes encoder.
 func (s *Sink) Flush(string) error {
-	if err := s.e.Close(); err != nil {
-		return fmt.Errorf("failed to flush wav encoder: %w", err)
+	if err := s.encoder.Close(); err != nil {
+		return fmt.Errorf("error flushing WAV encoder: %w", err)
 	}
 	return nil
 }
 
 // Sink returns new Sink function instance.
 func (s *Sink) Sink(pipeID string, sampleRate signal.SampleRate, numChannels int) (func(signal.Float64) error, error) {
-	s.e = wav.NewEncoder(s, int(sampleRate), int(s.BitDepth), numChannels, wavOutFormat)
-	unsigned := false
-	if s.BitDepth == signal.BitDepth8 {
-		unsigned = true
-	}
+	s.encoder = wav.NewEncoder(
+		s,
+		int(sampleRate),
+		int(s.BitDepth),
+		numChannels,
+		wavOutFormat,
+	)
 	// buffer for input conversion.
 	ints := signal.InterInt{
 		BitDepth:    s.BitDepth,
 		NumChannels: numChannels,
-		Unsigned:    unsigned,
+	}
+	if s.BitDepth == signal.BitDepth8 {
+		ints.Unsigned = true
 	}
 	// PCM buffer for write, refers data of ints buffer.
 	PCMBuf := audio.IntBuffer{
@@ -126,15 +125,14 @@ func (s *Sink) Sink(pipeID string, sampleRate signal.SampleRate, numChannels int
 		},
 		SourceBitDepth: int(s.BitDepth),
 	}
-
 	return func(b signal.Float64) error {
 		if b.Size() != ints.Size() {
 			ints.Data = make([]int, b.Size()*b.NumChannels())
 		}
 		b.CopyToInterInt(ints)
 		PCMBuf.Data = ints.Data
-		if err := s.e.Write(&PCMBuf); err != nil {
-			return fmt.Errorf("failed to write PCM buffer: %w", err)
+		if err := s.encoder.Write(&PCMBuf); err != nil {
+			return fmt.Errorf("error writing PCM buffer: %w", err)
 		}
 		return nil
 	}, nil
