@@ -7,7 +7,8 @@ import (
 
 	"github.com/go-audio/audio"
 	"github.com/go-audio/wav"
-	"github.com/pipelined/signal"
+
+	"pipelined.dev/signal"
 )
 
 const (
