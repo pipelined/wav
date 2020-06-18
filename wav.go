@@ -22,8 +22,8 @@ const (
 var ErrInvalidWav = errors.New("invalid WAV")
 
 type (
-	// Pump reads wav data from ReadSeeker.
-	Pump struct {
+	// Source reads wav data from ReadSeeker.
+	Source struct {
 		io.ReadSeeker
 		decoder *wav.Decoder
 	}
@@ -41,8 +41,8 @@ type (
 	}
 )
 
-// Pump starts the pump process once executed, wav attributes are accessible.
-func (p *Pump) Pump() pipe.SourceAllocatorFunc {
+// Source returns new wav source allocator closure.
+func (p *Source) Source() pipe.SourceAllocatorFunc {
 	return func(bufferSize int) (pipe.Source, pipe.SignalProperties, error) {
 		p.decoder = wav.NewDecoder(p)
 		if !p.decoder.IsValidFile() {
@@ -80,7 +80,7 @@ func (p *Pump) Pump() pipe.SourceAllocatorFunc {
 	}
 }
 
-func (p *Pump) sourceSigned(signed signal.Signed, PCM audio.IntBuffer) pipe.SourceFunc {
+func (p *Source) sourceSigned(signed signal.Signed, PCM audio.IntBuffer) pipe.SourceFunc {
 	return func(floating signal.Floating) (int, error) {
 		// read new buffer, io.EOF is never returned here.
 		read, err := p.decoder.PCMBuffer(&PCM)
@@ -104,7 +104,7 @@ func (p *Pump) sourceSigned(signed signal.Signed, PCM audio.IntBuffer) pipe.Sour
 	}
 }
 
-func (p *Pump) sourceUnsigned(unsigned signal.Unsigned, PCM audio.IntBuffer) pipe.SourceFunc {
+func (p *Source) sourceUnsigned(unsigned signal.Unsigned, PCM audio.IntBuffer) pipe.SourceFunc {
 	return func(floating signal.Floating) (int, error) {
 		// read new buffer, io.EOF is never returned here.
 		read, err := p.decoder.PCMBuffer(&PCM)
@@ -133,6 +133,7 @@ func (s *Sink) Flush(context.Context) error {
 	return nil
 }
 
+// Sink returns new wav sink allocator closure.
 func (s *Sink) Sink() pipe.SinkAllocatorFunc {
 	return func(bufferSize int, props pipe.SignalProperties) (pipe.Sink, error) {
 		s.encoder = wav.NewEncoder(
