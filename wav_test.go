@@ -44,7 +44,7 @@ func TestWavPipe(t *testing.T) {
 
 	for _, test := range tests {
 		inFile, _ := os.Open(test.inPath)
-		pump := wav.Pump{ReadSeeker: inFile}
+		pump := wav.Source{ReadSeeker: inFile}
 
 		outFile, _ := os.Create(test.outPath)
 		sink := wav.Sink{
@@ -52,7 +52,7 @@ func TestWavPipe(t *testing.T) {
 			BitDepth:    test.bitDepth,
 		}
 		line, err := pipe.Routing{
-			Source: pump.Pump(),
+			Source: pump.Source(),
 			Sink:   sink.Sink(),
 		}.Line(bufferSize)
 
