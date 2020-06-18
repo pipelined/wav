@@ -1,6 +1,7 @@
 package wav
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -8,6 +9,7 @@ import (
 	"github.com/go-audio/audio"
 	"github.com/go-audio/wav"
 
+	"pipelined.dev/pipe"
 	"pipelined.dev/signal"
 )
 
@@ -40,101 +42,167 @@ type (
 )
 
 // Pump starts the pump process once executed, wav attributes are accessible.
-func (p *Pump) Pump(sourceID string) (func(signal.Float64) error, signal.SampleRate, int, error) {
-	p.decoder = wav.NewDecoder(p)
-	if !p.decoder.IsValidFile() {
-		return nil, 0, 0, ErrInvalidWav
-	}
-
-	numChannels := p.decoder.Format().NumChannels
-	bitDepth := signal.BitDepth(p.decoder.BitDepth)
-
-	// PCM buffer for wav decoder.
-	PCMBuf := &audio.IntBuffer{
-		Format:         p.decoder.Format(),
-		SourceBitDepth: int(bitDepth),
-	}
-
-	// buffer for output conversion.
-	ints := signal.InterInt{
-		NumChannels: numChannels,
-		BitDepth:    bitDepth,
-	}
-	if bitDepth == signal.BitDepth8 {
-		ints.Unsigned = true
-	}
-	return func(b signal.Float64) error {
-		// reset PCM buffer size.
-		if ints.Size() != b.Size() {
-			ints.Data = make([]int, b.Size()*numChannels)
-			PCMBuf.Data = ints.Data
+func (p *Pump) Pump() pipe.SourceAllocatorFunc {
+	return func(bufferSize int) (pipe.Source, pipe.SignalProperties, error) {
+		p.decoder = wav.NewDecoder(p)
+		if !p.decoder.IsValidFile() {
+			return pipe.Source{}, pipe.SignalProperties{}, ErrInvalidWav
 		}
 
+		channels := p.decoder.Format().NumChannels
+		bitDepth := signal.BitDepth(p.decoder.BitDepth)
+
+		// PCM buffer for wav decoder.
+		PCM := audio.IntBuffer{
+			Format:         p.decoder.Format(),
+			SourceBitDepth: int(bitDepth),
+			Data:           make([]int, bufferSize*channels),
+		}
+		alloc := signal.Allocator{
+			Channels: channels,
+			Capacity: bufferSize,
+			Length:   bufferSize,
+		}
+		// 8-bits wav audio is encoded as unsigned signal
+		var sourceFn pipe.SourceFunc
+		if bitDepth == signal.BitDepth8 {
+			sourceFn = p.sourceUnsigned(alloc.Uint8(bitDepth), PCM)
+		} else {
+			sourceFn = p.sourceSigned(alloc.Int64(bitDepth), PCM)
+		}
+		return pipe.Source{
+				SourceFunc: sourceFn,
+			},
+			pipe.SignalProperties{
+				SampleRate: signal.SampleRate(p.decoder.SampleRate),
+				Channels:   channels,
+			}, nil
+	}
+}
+
+func (p *Pump) sourceSigned(signed signal.Signed, PCM audio.IntBuffer) pipe.SourceFunc {
+	return func(floating signal.Floating) (int, error) {
 		// read new buffer, io.EOF is never returned here.
-		read, err := p.decoder.PCMBuffer(PCMBuf)
+		read, err := p.decoder.PCMBuffer(&PCM)
 		if err != nil {
-			return fmt.Errorf("error reading PCM buffer: %w", err)
+			return 0, fmt.Errorf("error reading PCM buffer: %w", err)
 		}
 		if read == 0 {
-			return io.EOF
+			return 0, io.EOF
 		}
 
-		// trim buffer.
-		if read != len(ints.Data) {
-			ints.Data = ints.Data[:read]
-			for i := range b {
-				b[i] = b[i][:ints.Size()]
-			}
+		if read != len(PCM.Data) {
+			read = signal.WriteInt(PCM.Data[:read], signed)
+		} else {
+			read = signal.WriteInt(PCM.Data, signed)
 		}
 
-		// copy to the output.
-		ints.CopyToFloat64(b)
-		return nil
-	}, signal.SampleRate(p.decoder.SampleRate), numChannels, nil
+		if read != floating.Length() {
+			return signal.SignedAsFloating(signed.Slice(0, read), floating), nil
+		}
+		return signal.SignedAsFloating(signed, floating), nil
+	}
+}
+
+func (p *Pump) sourceUnsigned(unsigned signal.Unsigned, PCM audio.IntBuffer) pipe.SourceFunc {
+	return func(floating signal.Floating) (int, error) {
+		// read new buffer, io.EOF is never returned here.
+		read, err := p.decoder.PCMBuffer(&PCM)
+		if err != nil {
+			return 0, fmt.Errorf("error reading PCM buffer: %w", err)
+		}
+		if read == 0 {
+			return 0, io.EOF
+		}
+
+		for i := 0; i < read; i++ {
+			unsigned.SetSample(i, uint64(PCM.Data[i]))
+		}
+		if read != len(PCM.Data) {
+			return signal.UnsignedAsFloating(unsigned.Slice(0, signal.ChannelLength(read, unsigned.Channels())), floating), nil
+		}
+		return signal.UnsignedAsFloating(unsigned, floating), nil
+	}
 }
 
 // Flush flushes encoder.
-func (s *Sink) Flush(string) error {
+func (s *Sink) Flush(context.Context) error {
 	if err := s.encoder.Close(); err != nil {
 		return fmt.Errorf("error flushing WAV encoder: %w", err)
 	}
 	return nil
 }
 
-// Sink returns new Sink function instance.
-func (s *Sink) Sink(pipeID string, sampleRate signal.SampleRate, numChannels int) (func(signal.Float64) error, error) {
-	s.encoder = wav.NewEncoder(
-		s,
-		int(sampleRate),
-		int(s.BitDepth),
-		numChannels,
-		wavOutFormat,
-	)
-	// buffer for input conversion.
-	ints := signal.InterInt{
-		BitDepth:    s.BitDepth,
-		NumChannels: numChannels,
-	}
-	if s.BitDepth == signal.BitDepth8 {
-		ints.Unsigned = true
-	}
-	// PCM buffer for write, refers data of ints buffer.
-	PCMBuf := audio.IntBuffer{
-		Format: &audio.Format{
-			NumChannels: numChannels,
-			SampleRate:  int(sampleRate),
-		},
-		SourceBitDepth: int(s.BitDepth),
-	}
-	return func(b signal.Float64) error {
-		if b.Size() != ints.Size() {
-			ints.Data = make([]int, b.Size()*b.NumChannels())
+func (s *Sink) Sink() pipe.SinkAllocatorFunc {
+	return func(bufferSize int, props pipe.SignalProperties) (pipe.Sink, error) {
+		s.encoder = wav.NewEncoder(
+			s,
+			int(props.SampleRate),
+			int(s.BitDepth),
+			props.Channels,
+			wavOutFormat,
+		)
+		// PCM buffer for write, refers data of ints buffer.
+		PCM := audio.IntBuffer{
+			Format: &audio.Format{
+				NumChannels: props.Channels,
+				SampleRate:  int(props.SampleRate),
+			},
+			SourceBitDepth: int(s.BitDepth),
+			Data:           make([]int, bufferSize*props.Channels),
 		}
-		b.CopyToInterInt(ints)
-		PCMBuf.Data = ints.Data
-		if err := s.encoder.Write(&PCMBuf); err != nil {
+
+		alloc := signal.Allocator{
+			Channels: props.Channels,
+			Capacity: bufferSize,
+			Length:   bufferSize,
+		}
+		// 8-bits wav audio is encoded as unsigned signal
+		var sinkFn pipe.SinkFunc
+		if s.BitDepth == signal.BitDepth8 {
+			sinkFn = s.sinkUnsigned(alloc.Uint8(s.BitDepth), PCM)
+		} else {
+			sinkFn = s.sinkSigned(alloc.Int64(s.BitDepth), PCM)
+		}
+		return pipe.Sink{
+			SinkFunc:  sinkFn,
+			FlushFunc: s.Flush,
+		}, nil
+	}
+}
+
+func (s *Sink) sinkSigned(ints signal.Signed, PCM audio.IntBuffer) pipe.SinkFunc {
+	return func(floats signal.Floating) error {
+		if n := signal.FloatingAsSigned(floats, ints); n != ints.Length() {
+			PCM.Data = PCM.Data[:ints.Channels()*n]
+			// defer because it must be done after write
+			defer func() {
+				PCM.Data = PCM.Data[:ints.Cap()]
+			}()
+		}
+		signal.ReadInt(ints, PCM.Data)
+		if err := s.encoder.Write(&PCM); err != nil {
 			return fmt.Errorf("error writing PCM buffer: %w", err)
 		}
 		return nil
-	}, nil
+	}
+}
+
+func (s *Sink) sinkUnsigned(uints signal.Unsigned, PCM audio.IntBuffer) pipe.SinkFunc {
+	return func(floats signal.Floating) error {
+		if n := signal.FloatingAsUnsigned(floats, uints); n != uints.Length() {
+			PCM.Data = PCM.Data[:uints.Channels()*n]
+			// defer because it must be done after write
+			defer func() {
+				PCM.Data = PCM.Data[:uints.Cap()]
+			}()
+		}
+		for i := 0; i < len(PCM.Data); i++ {
+			PCM.Data[i] = int(uints.Sample(i))
+		}
+		if err := s.encoder.Write(&PCM); err != nil {
+			return fmt.Errorf("error writing PCM buffer: %w", err)
+		}
+		return nil
+	}
 }
