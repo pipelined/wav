@@ -1,4 +1,4 @@
-module pipelined.dev/wav
+module pipelined.dev/audio/wav
 
 require (
 	github.com/go-audio/audio v1.0.0
