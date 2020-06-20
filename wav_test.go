@@ -5,9 +5,10 @@ import (
 	"os"
 	"testing"
 
+	"pipelined.dev/audio/wav"
+
 	"pipelined.dev/pipe"
 	"pipelined.dev/signal"
-	"pipelined.dev/wav"
 )
 
 const (
