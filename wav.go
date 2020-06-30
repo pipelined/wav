@@ -13,10 +13,8 @@ import (
 	"pipelined.dev/signal"
 )
 
-const (
-	// value for wav output format chunk.
-	wavOutFormat = 1
-)
+// value for wav output format chunk.
+const wavOutFormat = 1
 
 // ErrInvalidWav is returned when wav file is not valid.
 var ErrInvalidWav = errors.New("invalid WAV")
@@ -32,10 +30,6 @@ type (
 	Sink struct {
 		io.WriteSeeker
 		signal.BitDepth
-	}
-
-	supported struct {
-		bitDepths map[signal.BitDepth]struct{}
 	}
 )
 
