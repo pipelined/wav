@@ -19,24 +19,10 @@ const wavOutFormat = 1
 // ErrInvalidWav is returned when wav file is not valid.
 var ErrInvalidWav = errors.New("invalid WAV")
 
-type (
-	// Source reads wav data from ReadSeeker.
-	Source struct {
-		io.ReadSeeker
-	}
-
-	// Sink writes wav data to WriteSeeker.
-	// BitDepth is output bit depth. Supported values: 8, 16, 24 and 32.
-	Sink struct {
-		io.WriteSeeker
-		signal.BitDepth
-	}
-)
-
-// Source returns new wav source allocator closure.
-func (s Source) Source() pipe.SourceAllocatorFunc {
+// Source reads wav data from ReadSeeker.
+func Source(rs io.ReadSeeker) pipe.SourceAllocatorFunc {
 	return func(bufferSize int) (pipe.Source, pipe.SignalProperties, error) {
-		decoder := wav.NewDecoder(s)
+		decoder := wav.NewDecoder(rs)
 		if !decoder.IsValidFile() {
 			return pipe.Source{}, pipe.SignalProperties{}, ErrInvalidWav
 		}
@@ -117,13 +103,14 @@ func sourceUnsigned(decoder *wav.Decoder, unsigned signal.Unsigned, pcm audio.In
 	}
 }
 
-// Sink returns new wav sink allocator closure.
-func (s Sink) Sink() pipe.SinkAllocatorFunc {
+// Sink writes wav data to WriteSeeker. BitDepth is output bit depth.
+// Supported values: 8, 16, 24 and 32.
+func Sink(ws io.WriteSeeker, bitDepth signal.BitDepth) pipe.SinkAllocatorFunc {
 	return func(bufferSize int, props pipe.SignalProperties) (pipe.Sink, error) {
 		encoder := wav.NewEncoder(
-			s,
+			ws,
 			int(props.SampleRate),
-			int(s.BitDepth),
+			int(bitDepth),
 			props.Channels,
 			wavOutFormat,
 		)
@@ -133,7 +120,7 @@ func (s Sink) Sink() pipe.SinkAllocatorFunc {
 				NumChannels: props.Channels,
 				SampleRate:  int(props.SampleRate),
 			},
-			SourceBitDepth: int(s.BitDepth),
+			SourceBitDepth: int(bitDepth),
 			Data:           make([]int, bufferSize*props.Channels),
 		}
 
@@ -144,10 +131,10 @@ func (s Sink) Sink() pipe.SinkAllocatorFunc {
 		}
 		// 8-bits wav audio is encoded as unsigned signal
 		var sinkFn pipe.SinkFunc
-		if s.BitDepth == signal.BitDepth8 {
-			sinkFn = sinkUnsigned(encoder, alloc.Uint8(s.BitDepth), PCM)
+		if bitDepth == signal.BitDepth8 {
+			sinkFn = sinkUnsigned(encoder, alloc.Uint8(bitDepth), PCM)
 		} else {
-			sinkFn = sinkSigned(encoder, alloc.Int64(s.BitDepth), PCM)
+			sinkFn = sinkSigned(encoder, alloc.Int64(bitDepth), PCM)
 		}
 		return pipe.Sink{
 			SinkFunc:  sinkFn,

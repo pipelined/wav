@@ -45,16 +45,11 @@ func TestWavPipe(t *testing.T) {
 
 	for _, test := range tests {
 		inFile, _ := os.Open(test.inPath)
-		pump := wav.Source{ReadSeeker: inFile}
 
 		outFile, _ := os.Create(test.outPath)
-		sink := wav.Sink{
-			WriteSeeker: outFile,
-			BitDepth:    test.bitDepth,
-		}
 		line, err := pipe.Routing{
-			Source: pump.Source(),
-			Sink:   sink.Sink(),
+			Source: wav.Source(inFile),
+			Sink:   wav.Sink(outFile, test.bitDepth),
 		}.Line(bufferSize)
 
 		p := pipe.New(context.Background(), pipe.WithLines(line))
