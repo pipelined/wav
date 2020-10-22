@@ -144,36 +144,36 @@ func Sink(ws io.WriteSeeker, bitDepth signal.BitDepth) pipe.SinkAllocatorFunc {
 	}
 }
 
-func sinkSigned(encoder *wav.Encoder, ints signal.Signed, PCM audio.IntBuffer) pipe.SinkFunc {
+func sinkSigned(encoder *wav.Encoder, ints signal.Signed, pcm audio.IntBuffer) pipe.SinkFunc {
 	return func(floats signal.Floating) error {
 		if n := signal.FloatingAsSigned(floats, ints); n != ints.Length() {
-			PCM.Data = PCM.Data[:ints.Channels()*n]
+			pcm.Data = pcm.Data[:ints.Channels()*n]
 			// defer because it must be done after write
 			defer func() {
-				PCM.Data = PCM.Data[:ints.Cap()]
+				pcm.Data = pcm.Data[:ints.Cap()]
 			}()
 		}
-		signal.ReadInt(ints, PCM.Data)
-		if err := encoder.Write(&PCM); err != nil {
+		signal.ReadInt(ints, pcm.Data)
+		if err := encoder.Write(&pcm); err != nil {
 			return fmt.Errorf("error writing PCM buffer: %w", err)
 		}
 		return nil
 	}
 }
 
-func sinkUnsigned(encoder *wav.Encoder, uints signal.Unsigned, PCM audio.IntBuffer) pipe.SinkFunc {
+func sinkUnsigned(encoder *wav.Encoder, uints signal.Unsigned, pcm audio.IntBuffer) pipe.SinkFunc {
 	return func(floats signal.Floating) error {
 		if n := signal.FloatingAsUnsigned(floats, uints); n != uints.Length() {
-			PCM.Data = PCM.Data[:uints.Channels()*n]
+			pcm.Data = pcm.Data[:uints.Channels()*n]
 			// defer because it must be done after write
 			defer func() {
-				PCM.Data = PCM.Data[:uints.Cap()]
+				pcm.Data = pcm.Data[:uints.Cap()]
 			}()
 		}
-		for i := 0; i < len(PCM.Data); i++ {
-			PCM.Data[i] = int(uints.Sample(i))
+		for i := 0; i < len(pcm.Data); i++ {
+			pcm.Data[i] = int(uints.Sample(i))
 		}
-		if err := encoder.Write(&PCM); err != nil {
+		if err := encoder.Write(&pcm); err != nil {
 			return fmt.Errorf("error writing PCM buffer: %w", err)
 		}
 		return nil
