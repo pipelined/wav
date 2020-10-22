@@ -47,13 +47,12 @@ func TestWavPipe(t *testing.T) {
 		inFile, _ := os.Open(test.inPath)
 
 		outFile, _ := os.Create(test.outPath)
-		line, err := pipe.Routing{
+
+		p, err := pipe.New(bufferSize, pipe.Routing{
 			Source: wav.Source(inFile),
 			Sink:   wav.Sink(outFile, test.bitDepth),
-		}.Line(bufferSize)
-
-		p := pipe.New(context.Background(), pipe.WithLines(line))
-		err = p.Wait()
+		})
+		err = p.Async(context.Background()).Await()
 		if err != nil {
 			t.Errorf("unexpected error: %v", err)
 		}
