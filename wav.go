@@ -10,6 +10,7 @@ import (
 	"github.com/go-audio/wav"
 
 	"pipelined.dev/pipe"
+	"pipelined.dev/pipe/mutable"
 	"pipelined.dev/signal"
 )
 
@@ -21,10 +22,10 @@ var ErrInvalidWav = errors.New("invalid WAV")
 
 // Source reads wav data from ReadSeeker.
 func Source(rs io.ReadSeeker) pipe.SourceAllocatorFunc {
-	return func(bufferSize int) (pipe.Source, pipe.SignalProperties, error) {
+	return func(mctx mutable.Context, bufferSize int) (pipe.Source, error) {
 		decoder := wav.NewDecoder(rs)
 		if !decoder.IsValidFile() {
-			return pipe.Source{}, pipe.SignalProperties{}, ErrInvalidWav
+			return pipe.Source{}, ErrInvalidWav
 		}
 
 		channels := decoder.Format().NumChannels
@@ -49,12 +50,12 @@ func Source(rs io.ReadSeeker) pipe.SourceAllocatorFunc {
 			sourceFn = sourceSigned(decoder, alloc.Int64(bitDepth), pcm)
 		}
 		return pipe.Source{
-				SourceFunc: sourceFn,
-			},
-			pipe.SignalProperties{
-				SampleRate: signal.SampleRate(decoder.SampleRate),
+			SourceFunc: sourceFn,
+			Output: pipe.SignalProperties{
+				SampleRate: signal.Frequency(decoder.SampleRate),
 				Channels:   channels,
-			}, nil
+			},
+		}, nil
 	}
 }
 
@@ -106,7 +107,7 @@ func sourceUnsigned(decoder *wav.Decoder, unsigned signal.Unsigned, pcm audio.In
 // Sink writes wav data to WriteSeeker. BitDepth is output bit depth.
 // Supported values: 8, 16, 24 and 32.
 func Sink(ws io.WriteSeeker, bitDepth signal.BitDepth) pipe.SinkAllocatorFunc {
-	return func(bufferSize int, props pipe.SignalProperties) (pipe.Sink, error) {
+	return func(mctx mutable.Context, bufferSize int, props pipe.SignalProperties) (pipe.Sink, error) {
 		encoder := wav.NewEncoder(
 			ws,
 			int(props.SampleRate),
