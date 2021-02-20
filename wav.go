@@ -51,7 +51,7 @@ func Source(rs io.ReadSeeker) pipe.SourceAllocatorFunc {
 		}
 		return pipe.Source{
 			SourceFunc: sourceFn,
-			Output: pipe.SignalProperties{
+			SignalProperties: pipe.SignalProperties{
 				SampleRate: signal.Frequency(decoder.SampleRate),
 				Channels:   channels,
 			},
